@@ -52,4 +52,5 @@ def get_result():
         return jsonify({"error": f"Error al consultar API JPS: {str(e)}"}), 500
 
 if __name__ == '__main__':
+
     app.run(debug=True)  # Para local; en Render usa gunicorn
