@@ -1,56 +1,47 @@
-# app.py - Servidor Flask para consultar API JPS solo para Nuevos Tiempos
+# app.py - Servidor Flask con bypass 403 para API JPS
 from flask import Flask, request, jsonify
-import requests  # Para hacer solicitudes HTTP a la API JPS
+import requests
 
 app = Flask(__name__)
 
-# Endpoint: GET /get_result?sorteo=XXXX
-# Recibe número de sorteo, consulta API JPS, parsea y devuelve JSON limpio
+# Headers para simular un navegador real (bypass 403)
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'application/json',
+    'Referer': 'https://www.jps.go.cr/',
+    'Origin': 'https://www.jps.go.cr'
+}
+
 @app.route('/get_result', methods=['GET'])
 def get_result():
-    sorteo = request.args.get('sorteo')  # Obtiene sorteo de query param
+    sorteo = request.args.get('sorteo')
     if not sorteo:
-        return jsonify({"error": "No se proporcionó número de sorteo"}), 400
+        return jsonify({"error": "Falta número de sorteo"}), 400
     
     url = f"https://integration.jps.go.cr/api/App/nuevostiempos/{sorteo}"
     
     try:
-        # Consulta la API JPS
-        response = requests.get(url, timeout=10)  # Timeout de 10s para evitar hangs
-        response.raise_for_status()  # Lanza error si no 200 OK
-        
-        data = response.json()  # Parsea JSON
-        
-        # Extracción de datos (basado en estructura de API: numero, fecha, premio, etc.)
-        # Si no existe campo, usa defaults
-        numero_ganador = data.get('numero', None)
-        
-        # Hora: Extrae de 'fecha' (formato ISO: YYYY-MM-DDTHH:MM:SS)
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        numero_ganador = data.get('numero')
         fecha = data.get('fecha', '')
-        hora = ''
-        if fecha and 'T' in fecha:
-            hora = fecha.split('T')[1][:5]  # HH:MM
-        
-        # Descripción: Construye de 'premio' si existe, else vacío
+        hora = fecha.split('T')[1][:5] if fecha and 'T' in fecha else ''
         premio = data.get('premio', '')
         descripcion = f"Premio: {premio}" if premio else ''
-        
-        # Si no hay número ganador (sorteo futuro o sin resultados), maneja
-        if numero_ganador is None:
-            return jsonify({"error": "No hay resultados disponibles para este sorteo aún"}), 404
-        
-        # Devuelve JSON limpio
-        result = {
+
+        if not numero_ganador:
+            return jsonify({"error": "Sorteo sin resultados aún"}), 404
+
+        return jsonify({
             "numero_ganador": numero_ganador,
             "hora": hora,
             "descripcion": descripcion
-        }
-        return jsonify(result)
-    
+        })
+
     except requests.exceptions.RequestException as e:
-        # Manejo de errores: API no responde, timeout, etc.
-        return jsonify({"error": f"Error al consultar API JPS: {str(e)}"}), 500
+        return jsonify({"error": f"API JPS: {str(e)}"}), 500
 
 if __name__ == '__main__':
-
-    app.run(debug=True)  # Para local; en Render usa gunicorn
+    app.run(debug=True)
